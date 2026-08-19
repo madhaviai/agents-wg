@@ -26,6 +26,8 @@ This document:
 
 Other Agents WG approaches exist ([PR #5](https://github.com/modelcontextprotocol/agents-wg/pull/5)). This doc uses the **supervisor–subagent tree** as the reference stress test.
 
+Runnable POCs live under [examples/](./examples): **deepagent-poc** (Deep Agents roster + `task()`) and **sdlc-mcp** (same tools over MCP agent-first discovery).
+
 ---
 
 ## 2. Deep Agents primer — lineage, capabilities, skills, registration

@@ -1,0 +1,13 @@
+# Experimental MCP Python SDK (agents/list + agents/get) is not on PyPI.
+# Install from a local checkout first, e.g. workspace python-sdk:
+#   pip install -e ../../../../../python-sdk[cli]
+#   pip install -e ../../../../../python-sdk/src/mcp-types
+python-dotenv>=1.0.0
+matplotlib>=3.8.0
+langfuse>=3.0.0
+langchain>=0.3.0
+langchain-groq>=0.3.0
+langchain-core>=0.3.0
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+

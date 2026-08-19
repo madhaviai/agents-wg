@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.langfuse*
+*.egg-info/
+.DS_Store
+outputs/
+*.png

@@ -1,0 +1,11 @@
+deepagents>=0.2.0
+langchain>=0.3.0
+langgraph>=0.3.0
+langchain-openai>=0.3.0
+langchain-groq>=0.3.0
+groq>=0.11.0
+langfuse>=3.0.0
+python-dotenv>=1.0.0
+matplotlib>=3.8.0
+# Optional — only if you import litellm directly or run a local proxy:
+# litellm>=1.60.0
