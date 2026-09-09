@@ -133,8 +133,7 @@ discovery and tool execution without agent-specific behavior.
 ### Agent Discovery Model
 
 An **agent** is a server-defined logical grouping that gives a host concise routing
-information and a scoped view of related MCP tools. It is not necessarily a separate
-process, model, endpoint, or MCP server.
+information and a scoped view of related MCP tools.
 
 Discovery is intentionally divided into two levels:
 
@@ -410,6 +409,15 @@ provider-specific identifier, and the host maps it to models available under loc
 When the field is absent, unsupported, or cannot be satisfied, the host **MAY** use its
 default model or inherit the supervisor's model. A server **MUST NOT** assume that a host
 honored the hint.
+
+The hint applies to **host-side execution of the selected agent** — for example, when the
+host constructs a local subagent from the returned instructions and tool schemas. It is
+**agent-scoped**, not tool-scoped or task-scoped: individual `tools/call` invocations do
+not carry model metadata, and servers do not learn the host's model inventory or
+provider-specific identifiers. Hosts **MAY** resolve the hint through local configuration,
+inherit the supervisor's model, or ignore unsupported values. When a host combines
+multiple agents, merge policy (such as selecting the largest declared role) remains
+host-defined and is outside this extension's wire contract.
 
 Tool call request and response semantics are unchanged by this extension. The server
 dispatches the call through its existing tool implementation; the agent grouping provides
