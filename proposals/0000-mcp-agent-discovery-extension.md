@@ -177,6 +177,16 @@ interface GetAgentRequest extends Request {
   params: GetAgentRequestParams;
 }
 
+type ModelRole = "small" | "medium" | "large";
+
+interface ModelRoutingHint {
+  /** Relative capability/cost role interpreted by the host. */
+  role?: ModelRole;
+
+  /** Whether a vision-capable model is preferred for this agent. */
+  vision: boolean;
+}
+
 interface GetAgentResult extends CacheableResult {
   resultType: "complete";
 
@@ -185,6 +195,9 @@ interface GetAgentResult extends CacheableResult {
 
   /** Optional guidance that a host may use when invoking this agent. */
   instructions?: string;
+
+  /** Optional provider-neutral guidance for host-side model selection. */
+  modelRoutingHint?: ModelRoutingHint;
 
   /** Existing MCP Tool objects scoped to this agent. */
   tools: Tool[];
@@ -367,6 +380,10 @@ The response is scoped to that agent:
     "resultType": "complete",
     "agent": "workflow-agent",
     "instructions": "Handle delivery readiness and approval workflows.",
+    "modelRoutingHint": {
+      "role": "medium",
+      "vision": false
+    },
     "tools": [
       {
         "name": "list_failed_pipelines",
@@ -387,6 +404,12 @@ The response is scoped to that agent:
   }
 }
 ```
+
+`modelRoutingHint` is advisory. The role expresses a relative model class rather than a
+provider-specific identifier, and the host maps it to models available under local policy.
+When the field is absent, unsupported, or cannot be satisfied, the host **MAY** use its
+default model or inherit the supervisor's model. A server **MUST NOT** assume that a host
+honored the hint.
 
 Tool call request and response semantics are unchanged by this extension. The server
 dispatches the call through its existing tool implementation; the agent grouping provides
@@ -449,6 +472,11 @@ Agent selection remains inside the host. MCP servers are not required to run a s
 model, choose an agent on behalf of the host, or expose a particular orchestration
 framework. This allows deterministic routers, model-based routers, user selection, and
 other approaches to use the same discovery protocol.
+
+Model selection also remains inside the host. Provider-specific model identifiers are not
+portable across clients, while hosts differ in model access, cost policy, and capability
+mapping. The optional routing hint therefore communicates relative intent without
+overriding host policy or requiring a separate model-backed subagent.
 
 ### Same-Server Tool Execution
 
@@ -541,6 +569,7 @@ The updated implementation demonstrates:
 - compact roster discovery and scoped agent details;
 - client session methods for both discovery steps;
 - result-level `ttlMs` and `cacheScope`;
+- optional advisory `modelRoutingHint` on `agents/get` with host-side resolution helpers;
 - execution through the existing `tools/call` path;
 - basic error handling for unknown agents and missing tool references;
 - tests covering extension negotiation, wire serialization, discovery, scoping, and
