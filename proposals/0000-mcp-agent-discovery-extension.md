@@ -41,8 +41,10 @@ Large flat catalogs create several practical problems:
 2. **Routing ambiguity** — similar or overlapping tools make correct selection harder.
 3. **Poor progressive disclosure** — hosts cannot discover an agent first and load
    its detailed tools only when needed.
-4. **Tight host configuration** — without a protocol-level grouping mechanism, each host
-   must maintain its own mapping of agents to tools.
+4. **Poor ownership model** — without server-authored groupings, each host must maintain
+   its own agent-to-tool mapping. That weakens interoperability: switching MCP servers
+   requires reconfiguring host-side mappings instead of consuming the server's view of
+   cohesive agents.
 5. **Inconsistent interoperability** — custom selector tools, resources, or private
    registries solve the problem differently and do not provide a common host behavior.
 
@@ -140,8 +142,7 @@ Discovery is intentionally divided into two levels:
 1. **Roster** — compact agent cards used to select a relevant agent.
 2. **Details** — instructions and full tool schemas for one selected agent.
 
-This separation is the basis of progressive disclosure. Capability labels are descriptive
-routing hints; clients do not interpret them as references to executable MCP tools.
+This separation is the basis of progressive disclosure.
 
 The extension defines the following wire types:
 
@@ -156,6 +157,9 @@ interface AgentCard {
   /** Concise routing labels; these are not MCP tool names. */
   capabilities: string[];
 }
+
+Capability labels are descriptive routing metadata. Clients do not interpret them as
+references to executable MCP tools or as substitutes for tool schemas.
 
 interface ListAgentsRequest extends PaginatedRequest {
   method: "agents/list";
@@ -217,6 +221,10 @@ remain callable through the existing MCP tool-calling mechanism, subject to the 
 authorization context and server policy as any other tool call.
 When `tools/list` and `agents/get` responses are produced from the same server state and
 authorization context, all fields of the corresponding `Tool` definitions **MUST** match.
+Servers **SHOULD** validate agent registrations at configuration time. Per-request
+responses **MUST** still reflect the caller's authorization: a tool visible in
+`agents/get` for one client may be absent from that client's `tools/list`, in which case
+`invalid_agent_definition` applies.
 
 Agent membership does not grant additional authorization. A server **MUST** filter both
 the roster and agent details according to the requesting client's effective permissions.
@@ -276,15 +284,15 @@ Agent selection occurs inside the host and is not a protocol request. The protoc
 not prescribe whether selection is performed by a model, deterministic rules, user
 choice, or another routing strategy.
 
-A host MAY represent a discovered agent as a local, non-MCP delegation tool for its
+A host can represent a discovered agent as a local, non-MCP delegation tool for its
 supervisor or orchestration framework. Such a tool can resolve the selected agent through
 `agents/get`, construct a local agent using the returned instructions and tool
 schemas, and return a compact result to the supervisor. This is host-side orchestration;
 it does not introduce an `agents/call` method or change MCP tool execution.
 
-A host using agent-first discovery **SHOULD NOT** place the complete flat tool catalog and
-the agent-scoped tool schemas into the same routing context, because doing so removes the
-progressive-disclosure benefit. This does not prohibit a host from using `tools/list` for
+Hosts using agent-first discovery are discouraged from placing the complete flat tool
+catalog and the agent-scoped tool schemas into the same routing context, because doing so
+removes the progressive-disclosure benefit. This does not prohibit a host from using `tools/list` for
 other operational purposes. Existing systems that already call `tools/list` **MAY** retain
 that behavior for indexing, schema validation, and other host operations. Progressive
 disclosure concerns which tool schemas the host presents to the model's routing context,
@@ -339,8 +347,9 @@ The server returns compact cards only:
 }
 ```
 
-`agents/list` uses the standard MCP pagination model. Clients omit `cursor` for the first
-page and continue with the returned `nextCursor` until the response omits it.
+`agents/list` uses the standard MCP [pagination](https://modelcontextprotocol.io/specification/2026-07-28/server/utilities/pagination)
+model. Clients omit `cursor` for the first page and continue with the returned
+`nextCursor` until the response omits it.
 
 #### Agent Roster Changes
 
@@ -348,6 +357,16 @@ A server that advertises `listChanged: true` for this extension supports
 `notifications/agents/list_changed`. Clients opt in by adding `agentsListChanged: true` to
 the `notifications` filter of a `subscriptions/listen` request. The server acknowledges
 and delivers the notification using the standard MCP subscription mechanism.
+
+Example notification:
+
+```jsonc
+{
+  "jsonrpc": "2.0",
+  "method": "notifications/agents/list_changed",
+  "params": {}
+}
+```
 
 The notification indicates that the visible roster or one or more agent cards may have
 changed. A client receiving it **SHOULD** invalidate all cached `agents/list` pages and
@@ -448,13 +467,14 @@ the error `data` object:
 - If the requested agent does not exist or is not visible to the requesting client, the
   server **MUST** return `-32602` (`Invalid params`) with
   `data.reason: "agent_not_found"`. Clients **MAY** refresh `agents/list` and retry.
-- If an agent definition references a tool that is unavailable under the same server
-  configuration, the server **MUST** return `-32603` (`Internal error`) with
-  `data.reason: "invalid_agent_definition"`. Clients **SHOULD NOT** retry until the server
-  configuration changes.
+- If an agent definition references a tool that is unavailable for the requesting client
+  under the current authorization context, the server **MUST** return `-32603`
+  (`Internal error`) with `data.reason: "invalid_agent_definition"`. Clients should not
+  automatically retry the same request; they **MAY** refresh discovery state (for example
+  after cache expiry or `notifications/agents/list_changed`) before retrying.
 
-Servers **MUST NOT** distinguish a nonexistent agent from an agent hidden by authorization,
-because doing so could disclose the existence of an inaccessible agent.
+Authorization and existence handling for restricted agents is described under
+Security Implications.
 
 ## Rationale
 
@@ -506,10 +526,13 @@ support agent discovery. Unless it duplicated complete tool definitions, hosts w
 still need to join it with `tools/list`. Dedicated, capability-gated methods provide typed
 agent semantics without overloading the resource model.
 
-**Selector or mega-tools.** A server can expose one tool that privately routes to internal
-agents or APIs. This reduces the visible tool catalog, but hides agent tool schemas
-and makes composition, authorization, and interoperability dependent on a custom tool
-contract.
+**Agent exposed as a single tool.** A server can expose one tool whose implementation
+delegates to internal logic (including internal agents or APIs). That pattern reduces the
+visible catalog but hides scoped tool schemas from the host, makes authorization and
+composition depend on a custom tool contract, and prevents hosts from constructing standard
+local subagents from MCP `Tool` definitions. This extension targets the case where the
+host needs typed discovery of instructions and scoped tools without a bespoke mega-tool
+API.
 
 **One MCP server per agent.** Separate servers provide strong deployment isolation, but
 require hosts to discover and connect to multiple servers and to construct an agent roster
@@ -560,6 +583,13 @@ shared across those boundaries.
 Agent instructions and metadata are server-provided content. Hosts should apply the same
 trust and safety treatment they use for tool descriptions and other server-provided
 instructions; discovery metadata must not override host security policy or user consent.
+
+When a server policy requires hiding an agent's existence from unauthorized callers, the
+server **MUST** use the same `agent_not_found` response as for a nonexistent agent name.
+When a caller is permitted to know an agent exists but lacks authorization to retrieve it,
+the server **MAY** return an authorization error that enables [step-up
+authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization/index#step-up-authorization-flow).
+Servers **SHOULD** document which policy applies for their deployment.
 
 ## Reference Implementation
 
