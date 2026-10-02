@@ -89,6 +89,17 @@ io.modelcontextprotocol/agents
 Clients and servers explicitly declare support for the extension using the MCP extension
 negotiation mechanism.
 
+This SEP is specified against MCP protocol revision **[2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28)**
+or later because it reuses, by reference, mechanisms introduced or normatively defined in
+that revision: extension advertisement in server discovery, per-request client extension
+declaration, paginated list operations, cache metadata on list results, and (when
+`listChanged` is enabled) subscription delivery of `notifications/agents/list_changed`
+via `subscriptions/listen`. The extension is optional and additive; when it is not
+negotiated, clients and servers continue using core MCP discovery and tool execution
+without change. Conformant implementations of the wire shape defined here assume
+**2026-07-28+**; supporting that shape on earlier revisions is out of scope for this
+document.
+
 A client declares support in its per-request capabilities:
 
 ```jsonc
