@@ -230,12 +230,13 @@ same tool name appears under multiple agents, it **MUST** identify the same serv
 callable tool. Every returned tool **MUST** also be discoverable through `tools/list` and
 remain callable through the existing MCP tool-calling mechanism, subject to the same
 authorization context and server policy as any other tool call.
-When `tools/list` and `agents/get` responses are produced from the same server state and
-authorization context, all fields of the corresponding `Tool` definitions **MUST** match.
-Servers **SHOULD** validate agent registrations at configuration time. Per-request
-responses **MUST** still reflect the caller's authorization: a tool visible in
-`agents/get` for one client may be absent from that client's `tools/list`, in which case
-`invalid_agent_definition` applies.
+When a tool appears in both responses for the same request context, all fields of the
+corresponding `Tool` definitions **MUST** match. For each `agents/get` request, the
+server **MUST** return only tools that would also appear in that caller's `tools/list`
+under the same authorization context (the intersection of agent membership with the
+authorized catalog). A server **MUST NOT** include a tool in `agents/get` that would be
+absent from that caller's `tools/list`. Servers **SHOULD** validate at registration time
+that every tool name referenced by an agent exists in the server catalog.
 
 Agent membership does not grant additional authorization. A server **MUST** filter both
 the roster and agent details according to the requesting client's effective permissions.
@@ -367,7 +368,9 @@ model. Clients omit `cursor` for the first page and continue with the returned
 A server that advertises `listChanged: true` for this extension supports
 `notifications/agents/list_changed`. Clients opt in by adding `agentsListChanged: true` to
 the `notifications` filter of a `subscriptions/listen` request. The server acknowledges
-and delivers the notification using the standard MCP subscription mechanism.
+and delivers the notification using the standard MCP subscription mechanism. Receiving
+these notifications in a host requires client SDK support for extension-specific
+notification filters (see [modelcontextprotocol#3371](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3371)); this SEP does not define additional wire fields beyond the filter key above.
 
 Example notification:
 
@@ -478,11 +481,15 @@ the error `data` object:
 - If the requested agent does not exist or is not visible to the requesting client, the
   server **MUST** return `-32602` (`Invalid params`) with
   `data.reason: "agent_not_found"`. Clients **MAY** refresh `agents/list` and retry.
-- If an agent definition references a tool that is unavailable for the requesting client
-  under the current authorization context, the server **MUST** return `-32603`
-  (`Internal error`) with `data.reason: "invalid_agent_definition"`. Clients should not
-  automatically retry the same request; they **MAY** refresh discovery state (for example
-  after cache expiry or `notifications/agents/list_changed`) before retrying.
+- If an agent's configured membership references a tool name that does not exist in the
+  server catalog, or the server would return a tool through `agents/get` that would be
+  absent from that caller's `tools/list` under the same authorization context, the server
+  **MUST** return `-32603` (`Internal error`) with
+  `data.reason: "invalid_agent_definition"`. This indicates server misconfiguration or
+  inconsistent discovery filtering, not a caller authorization decision handled by
+  omitting tools from the intersection. Clients **SHOULD NOT** automatically retry the
+  same request; they **MAY** refresh discovery state (for example after cache expiry or
+  `notifications/agents/list_changed`) before attempting a new request.
 
 Authorization and existence handling for restricted agents is described under
 Security Implications.
